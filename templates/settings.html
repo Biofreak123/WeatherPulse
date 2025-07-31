@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Options Trading{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h2 mb-0">
+            <i class="fas fa-cog me-2"></i>
+            Settings
+        </h1>
+        <p class="text-muted">Configure your Alpaca API credentials</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-key me-2"></i>
+                    Alpaca API Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="alpaca_api_key" class="form-label">
+                            <i class="fas fa-user me-1"></i> API Key
+                        </label>
+                        <input type="text" 
+                               class="form-control font-monospace" 
+                               id="alpaca_api_key" 
+                               name="alpaca_api_key" 
+                               value="{{ config.alpaca_api_key if config else '' }}"
+                               placeholder="PKxxxxxxxxxxxxxxxxxxxxxxxx">
+                        <div class="form-text">
+                            Your Alpaca API Key ID for paper trading
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="alpaca_secret_key" class="form-label">
+                            <i class="fas fa-lock me-1"></i> Secret Key
+                        </label>
+                        <input type="password" 
+                               class="form-control font-monospace" 
+                               id="alpaca_secret_key" 
+                               name="alpaca_secret_key" 
+                               value="{{ config.alpaca_secret_key if config else '' }}"
+                               placeholder="Your secret key">
+                        <div class="form-text">
+                            Your Alpaca Secret Key for paper trading
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i> Save Settings
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="testConnection()">
+                            <i class="fas fa-plug me-1"></i> Test Connection
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Important Notes
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-shield-alt me-2"></i>
+                    <strong>Paper Trading Only</strong><br>
+                    This system uses Alpaca's paper trading environment. No real money is involved.
+                </div>
+
+                <h6><i class="fas fa-key me-1"></i> Getting API Keys:</h6>
+                <ol class="small">
+                    <li>Sign up at <a href="https://alpaca.markets" target="_blank">Alpaca Markets</a></li>
+                    <li>Go to your dashboard</li>
+                    <li>Navigate to "API Keys" section</li>
+                    <li>Generate paper trading keys</li>
+                    <li>Copy and paste them here</li>
+                </ol>
+
+                <div class="mt-3">
+                    <h6><i class="fas fa-chart-line me-1"></i> Features:</h6>
+                    <ul class="small">
+                        <li>2 DTE option contracts</li>
+                        <li>ATM strike selection</li>
+                        <li>Market order execution</li>
+                        <li>Real-time status tracking</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-webhook me-2"></i>
+                    Webhook URL
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="small mb-2">Use this URL for your webhook integrations:</p>
+                <div class="input-group">
+                    <input type="text" 
+                           class="form-control font-monospace small" 
+                           value="{{ request.url_root }}webhook" 
+                           readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyWebhookUrl()">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testConnection() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Testing...';
+    button.disabled = true;
+    
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+            
+            if (data.is_connected) {
+                showAlert('Connection successful!', 'success');
+            } else {
+                showAlert('Connection failed: ' + data.connection_msg, 'danger');
+            }
+        })
+        .catch(error => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+            showAlert('Error testing connection: ' + error.message, 'danger');
+        });
+}
+
+function copyWebhookUrl() {
+    const input = document.querySelector('input[value*="webhook"]');
+    input.select();
+    document.execCommand('copy');
+    
+    showAlert('Webhook URL copied to clipboard!', 'info');
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

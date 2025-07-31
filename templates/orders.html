@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Orders - Options Trading{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h2 mb-0">
+            <i class="fas fa-list me-2"></i>
+            Order History
+        </h1>
+        <p class="text-muted">View all trading orders and their status</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">All Orders</h5>
+                <button class="btn btn-outline-primary btn-sm" onclick="refreshOrders()">
+                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                {% if orders.items %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Time</th>
+                                    <th>Signal</th>
+                                    <th>Ticker</th>
+                                    <th>Contract</th>
+                                    <th>Strike</th>
+                                    <th>Expiry</th>
+                                    <th>Qty</th>
+                                    <th>Status</th>
+                                    <th>Alpaca ID</th>
+                                    <th>Error</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders.items %}
+                                <tr>
+                                    <td>
+                                        <small class="font-monospace">#{{ order.id }}</small>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {{ order.created_at.strftime('%m/%d/%Y %H:%M:%S') if order.created_at else 'N/A' }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if order.signal == 'CALL' else 'danger' }}">
+                                            {% if order.signal == 'CALL' %}
+                                                <i class="fas fa-arrow-up me-1"></i>{{ order.signal }}
+                                            {% else %}
+                                                <i class="fas fa-arrow-down me-1"></i>{{ order.signal }}
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ order.ticker }}</strong></td>
+                                    <td>
+                                        <small class="font-monospace">
+                                            {{ order.contract_symbol or 'N/A' }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% if order.strike_price %}
+                                            ${{ "%.2f"|format(order.strike_price) }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ order.expiry_date or 'N/A' }}</small>
+                                    </td>
+                                    <td>{{ order.quantity }}</td>
+                                    <td>
+                                        {% if order.order_status == 'submitted' %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check me-1"></i>Success
+                                            </span>
+                                        {% elif order.order_status == 'failed' %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-times me-1"></i>Failed
+                                            </span>
+                                        {% elif order.order_status == 'processing' %}
+                                            <span class="badge bg-warning">
+                                                <i class="fas fa-clock me-1"></i>Processing
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ order.order_status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if order.alpaca_order_id %}
+                                            <small class="font-monospace">{{ order.alpaca_order_id[:8] }}...</small>
+                                        {% else %}
+                                            <small class="text-muted">N/A</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if order.error_message %}
+                                            <button class="btn btn-outline-danger btn-sm" 
+                                                    data-bs-toggle="tooltip" 
+                                                    title="{{ order.error_message }}">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                            </button>
+                                        {% else %}
+                                            <small class="text-muted">None</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if orders.pages > 1 %}
+                        <nav aria-label="Order pagination" class="mt-3">
+                            <ul class="pagination justify-content-center">
+                                {% if orders.has_prev %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('orders', page=orders.prev_num) }}">
+                                            <i class="fas fa-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+
+                                {% for page_num in orders.iter_pages() %}
+                                    {% if page_num %}
+                                        {% if page_num != orders.page %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="{{ url_for('orders', page=page_num) }}">{{ page_num }}</a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item active">
+                                                <span class="page-link">{{ page_num }}</span>
+                                            </li>
+                                        {% endif %}
+                                    {% else %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">...</span>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if orders.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('orders', page=orders.next_num) }}">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    {% endif %}
+
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fs-1 text-muted mb-3"></i>
+                        <h5>No orders found</h5>
+                        <p class="text-muted">Orders will appear here when webhook signals are received</p>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+                            <i class="fas fa-tachometer-alt me-1"></i> Go to Dashboard
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+function refreshOrders() {
+    location.reload();
+}
+</script>
+{% endblock %}

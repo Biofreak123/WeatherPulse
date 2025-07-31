@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Options Trading{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h2 mb-0">
+            <i class="fas fa-tachometer-alt me-2"></i>
+            Trading Dashboard
+        </h1>
+        <p class="text-muted">Monitor your options trading activity</p>
+    </div>
+</div>
+
+<!-- Connection Status -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="me-3">
+                        {% if is_connected %}
+                            <i class="fas fa-check-circle text-success fs-4"></i>
+                        {% else %}
+                            <i class="fas fa-exclamation-triangle text-warning fs-4"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h5 class="mb-1">
+                            {% if is_connected %}
+                                API Connection Active
+                            {% else %}
+                                API Connection Issue
+                            {% endif %}
+                        </h5>
+                        <p class="mb-0 text-muted">{{ connection_msg }}</p>
+                    </div>
+                    {% if not is_connected %}
+                        <div class="ms-auto">
+                            <a href="{{ url_for('settings') }}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-cog me-1"></i> Configure
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card bg-primary">
+            <div class="card-body text-center">
+                <i class="fas fa-list-ol fs-1 mb-2"></i>
+                <h3 class="mb-1" id="total-orders">{{ total_orders }}</h3>
+                <p class="mb-0">Total Orders</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-success">
+            <div class="card-body text-center">
+                <i class="fas fa-check-circle fs-1 mb-2"></i>
+                <h3 class="mb-1" id="successful-orders">{{ successful_orders }}</h3>
+                <p class="mb-0">Successful</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-danger">
+            <div class="card-body text-center">
+                <i class="fas fa-times-circle fs-1 mb-2"></i>
+                <h3 class="mb-1" id="failed-orders">{{ failed_orders }}</h3>
+                <p class="mb-0">Failed</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-warning">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fs-1 mb-2"></i>
+                <h3 class="mb-1" id="pending-orders">0</h3>
+                <p class="mb-0">Pending</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Orders -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock me-2"></i>
+                    Recent Orders
+                </h5>
+                <a href="{{ url_for('orders') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-list me-1"></i> View All
+                </a>
+            </div>
+            <div class="card-body">
+                {% if recent_orders %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Signal</th>
+                                    <th>Ticker</th>
+                                    <th>Contract</th>
+                                    <th>Qty</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-orders-table">
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td>
+                                        <small>{{ order.created_at.strftime('%m/%d %H:%M') if order.created_at else 'N/A' }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if order.signal == 'CALL' else 'danger' }}">
+                                            {% if order.signal == 'CALL' %}
+                                                <i class="fas fa-arrow-up me-1"></i>{{ order.signal }}
+                                            {% else %}
+                                                <i class="fas fa-arrow-down me-1"></i>{{ order.signal }}
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ order.ticker }}</strong></td>
+                                    <td>
+                                        <small class="font-monospace">
+                                            {{ order.contract_symbol or 'N/A' }}
+                                        </small>
+                                    </td>
+                                    <td>{{ order.quantity }}</td>
+                                    <td>
+                                        {% if order.order_status == 'submitted' %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check me-1"></i>Success
+                                            </span>
+                                        {% elif order.order_status == 'failed' %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-times me-1"></i>Failed
+                                            </span>
+                                        {% elif order.order_status == 'processing' %}
+                                            <span class="badge bg-warning">
+                                                <i class="fas fa-clock me-1"></i>Processing
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ order.order_status }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-inbox fs-1 text-muted mb-3"></i>
+                        <h5>No orders yet</h5>
+                        <p class="text-muted">Orders will appear here when webhook signals are received</p>
+                        <a href="{{ url_for('test_webhook') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-vial me-1"></i> Test Webhook
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Webhook Information -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-webhook me-2"></i>
+                    Webhook Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Send POST requests to the webhook endpoint with JSON payload:</p>
+                <pre class="bg-dark p-3 rounded"><code>POST {{ request.url_root }}webhook
+
+{
+    "signal": "CALL" or "PUT",
+    "ticker": "SPY",
+    "qty": 1
+}</code></pre>
+                <a href="{{ url_for('test_webhook') }}" class="btn btn-outline-info">
+                    <i class="fas fa-vial me-1"></i> Test Webhook
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh dashboard data every 30 seconds
+setInterval(function() {
+    updateDashboardStats();
+}, 30000);
+
+function updateDashboardStats() {
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.error) {
+                document.getElementById('total-orders').textContent = data.total_orders;
+                document.getElementById('successful-orders').textContent = data.successful_orders;
+                document.getElementById('failed-orders').textContent = data.failed_orders;
+                document.getElementById('pending-orders').textContent = data.pending_orders;
+            }
+        })
+        .catch(error => console.error('Error updating stats:', error));
+}
+</script>
+{% endblock %}
