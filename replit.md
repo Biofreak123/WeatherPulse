@@ -34,6 +34,9 @@ The `TradingService` class handles all Alpaca API interactions including:
 - **SPY-Specific Function**: Added dedicated `get_spy_last_price()` function for SPY price retrieval
 - **Data Endpoint Migration**: Updated market data calls to use `data.alpaca.markets` instead of `paper-api.alpaca.markets`
 - **Trade Price Extraction**: Modified to extract last trade price from `res.json()['trades'][ticker]['p']` format
+- **Options Contract Resolution**: Added live API endpoint support (`api.alpaca.markets`) for options contract searches
+- **Fallback Symbol Construction**: Implemented automatic option symbol generation using standard OCC format when API search fails
+- **Full Webhook Functionality**: Successfully processing CALL/PUT signals with proper option contract generation and order placement
 
 ### Web Interface
 Frontend uses Bootstrap with dark theme for a modern trading dashboard aesthetic. The interface provides three main views:

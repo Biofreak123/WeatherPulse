@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class TradingService:
     def __init__(self):
         self.base_url = "https://paper-api.alpaca.markets"
+        self.live_url = "https://api.alpaca.markets"
         self.data_url = "https://data.alpaca.markets"
         
     def get_headers(self):
@@ -104,6 +105,27 @@ class TradingService:
             logger.error(f"Error getting price for {ticker}: {str(e)}")
             raise
     
+    def construct_option_symbol(self, ticker, expiry_date, option_type, strike_price):
+        """Construct standard option symbol format: TICKER+YYMMDD+C/P+STRIKE"""
+        try:
+            # Convert expiry date to YYMMDD format
+            expiry_dt = datetime.strptime(expiry_date, "%Y-%m-%d")
+            date_str = expiry_dt.strftime("%y%m%d")
+            
+            # Option type letter
+            type_letter = "C" if option_type == "call" else "P"
+            
+            # Strike price with proper formatting (8 digits, 3 decimal places)
+            strike_str = f"{int(strike_price * 1000):08d}"
+            
+            # Standard OCC format
+            symbol = f"{ticker}{date_str}{type_letter}{strike_str}"
+            return symbol
+            
+        except Exception as e:
+            logger.error(f"Error constructing option symbol: {str(e)}")
+            return None
+
     def get_atm_option_contract(self, ticker, direction):
         """Find ATM option contract for given ticker and direction"""
         try:
@@ -112,6 +134,7 @@ class TradingService:
             expiry = self.get_2dte_date()
             option_type = "call" if direction == "CALL" else "put"
             
+            # Try API search first
             headers = self.get_headers()
             params = {
                 "underlying_symbol": ticker,
@@ -120,17 +143,25 @@ class TradingService:
                 "strike_price": strike,
             }
             
-            response = requests.get(
-                f"{self.base_url}/v1beta1/options/contracts", 
-                headers=headers, 
-                params=params,
-                timeout=10
-            )
-            response.raise_for_status()
-            contracts = response.json().get("option_contracts", [])
+            try:
+                response = requests.get(
+                    f"{self.live_url}/v1beta1/options/contracts", 
+                    headers=headers, 
+                    params=params,
+                    timeout=10
+                )
+                response.raise_for_status()
+                contracts = response.json().get("option_contracts", [])
+                
+                if contracts:
+                    return contracts[0]["symbol"], strike, expiry
+            except requests.exceptions.RequestException:
+                logger.warning("API contract search failed, using constructed symbol")
             
-            if contracts:
-                return contracts[0]["symbol"], strike, expiry
+            # Fallback: construct symbol manually
+            constructed_symbol = self.construct_option_symbol(ticker, expiry, option_type, strike)
+            if constructed_symbol:
+                return constructed_symbol, strike, expiry
             else:
                 return None, strike, expiry
                 
