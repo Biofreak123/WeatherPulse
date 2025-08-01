@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class TradingService:
     def __init__(self):
         self.base_url = "https://paper-api.alpaca.markets"
+        self.data_url = "https://data.alpaca.markets"
         
     def get_headers(self):
         """Get Alpaca API headers from database config or environment variables"""
@@ -57,41 +58,48 @@ class TradingService:
         """Round price to nearest dollar for strike selection"""
         return round(price)
     
-    def get_current_price(self, ticker):
-        """Get current stock price from Alpaca"""
+    def get_spy_last_price(self):
+        """Get SPY last trade price from Alpaca trades endpoint"""
         try:
             headers = self.get_headers()
             response = requests.get(
-                f"{self.base_url}/v2/stocks/{ticker}/quotes/latest", 
+                f"{self.data_url}/v2/stocks/trades/latest?symbols=SPY", 
                 headers=headers, 
                 timeout=10
             )
             response.raise_for_status()
             data = response.json()
             
-            # Try different price fields based on what's available
-            if 'quote' in data:
-                quote = data['quote']
-                if 'askprice' in quote and quote['askprice']:
-                    return float(quote['askprice'])
-                elif 'bidprice' in quote and quote['bidprice']:
-                    return float(quote['bidprice'])
-                elif 'midprice' in quote and quote['midprice']:
-                    return float(quote['midprice'])
+            if 'trades' in data and 'SPY' in data['trades']:
+                return float(data['trades']['SPY']['p'])
+            else:
+                raise ValueError("No trade price data available for SPY")
+                
+        except Exception as e:
+            logger.error(f"Error getting SPY last price: {str(e)}")
+            raise
+    
+    def get_current_price(self, ticker):
+        """Get current stock price from Alpaca trades endpoint"""
+        try:
+            # Use specialized SPY function for SPY ticker
+            if ticker.upper() == 'SPY':
+                return self.get_spy_last_price()
             
-            # Fallback to trades endpoint
+            headers = self.get_headers()
             response = requests.get(
-                f"{self.base_url}/v2/stocks/{ticker}/trades/latest", 
+                f"{self.data_url}/v2/stocks/trades/latest?symbols={ticker}", 
                 headers=headers, 
                 timeout=10
             )
             response.raise_for_status()
-            trade_data = response.json()
-            if 'trade' in trade_data and 'price' in trade_data['trade']:
-                return float(trade_data['trade']['price'])
-                
-            raise ValueError("No price data available")
+            data = response.json()
             
+            if 'trades' in data and ticker in data['trades']:
+                return float(data['trades'][ticker]['p'])
+            else:
+                raise ValueError(f"No trade price data available for {ticker}")
+                
         except Exception as e:
             logger.error(f"Error getting price for {ticker}: {str(e)}")
             raise

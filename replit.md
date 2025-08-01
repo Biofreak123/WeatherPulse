@@ -27,6 +27,13 @@ The `TradingService` class handles all Alpaca API interactions including:
 - Options contract discovery for ATM (at-the-money) strikes
 - Order execution and status tracking
 - 2-day expiration date calculations with business day logic
+- Real-time price data retrieval using Alpaca's trades endpoint
+
+#### Recent Updates (August 2025)
+- **Price Lookup Enhancement**: Updated price retrieval logic to use `/v2/stocks/trades/latest` endpoint instead of quotes
+- **SPY-Specific Function**: Added dedicated `get_spy_last_price()` function for SPY price retrieval
+- **Data Endpoint Migration**: Updated market data calls to use `data.alpaca.markets` instead of `paper-api.alpaca.markets`
+- **Trade Price Extraction**: Modified to extract last trade price from `res.json()['trades'][ticker]['p']` format
 
 ### Web Interface
 Frontend uses Bootstrap with dark theme for a modern trading dashboard aesthetic. The interface provides three main views:
