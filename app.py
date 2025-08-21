@@ -10,7 +10,6 @@ broker = AlpacaBroker()
 quotes = TradierQuotes(sandbox=True)   # use sandbox=False for live
 exits  = ExitManager(broker, quotes)
 
-
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -39,3 +38,14 @@ with app.app_context():
     import models
     import routes
     db.create_all()
+
+# -------------------------------
+# Healthcheck + root route
+# -------------------------------
+@app.route("/")
+def index():
+    return "✅ WeatherPulse is running!"
+
+@app.route("/ping")
+def ping():
+    return "pong", 200
