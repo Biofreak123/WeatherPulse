@@ -4,6 +4,12 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from werkzeug.middleware.proxy_fix import ProxyFix
+from exit_manager import AlpacaBroker, TradierQuotes, ExitManager
+
+broker = AlpacaBroker()
+quotes = TradierQuotes(sandbox=True)   # use sandbox=False for live
+exits  = ExitManager(broker, quotes)
+
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)

@@ -3,9 +3,92 @@ from app import app, db
 from models import TradingConfig, Order, WebhookLog
 from trading_service import TradingService
 import logging
+import json  # keep
+
+# --- NEW: Exit manager imports/instances ---
+from exit_manager import AlpacaBroker, TradierQuotes, ExitManager
+
+broker = AlpacaBroker()
+# set sandbox=False if you’re using production Tradier quotes
+quotes = TradierQuotes(sandbox=True)
+exits = ExitManager(broker, quotes)
+# --- end NEW ---
 
 logger = logging.getLogger(__name__)
 trading_service = TradingService()
+
+# --- NEW: minimal-alert defaults + normalizer ---
+DEFAULT_TICKER = "SPY"
+DEFAULT_QTY = 1
+
+def _normalize_signal_payload(request):
+    """
+    Accepts:
+      - /webhook?side=call|put
+      - text/plain body: 'CALL' or 'PUT'
+      - JSON: {"side":"CALL"} or {"signal":"PUT", "ticker":"SPY", "qty":1}
+      - form-encoded fields
+    Returns a dict like: {"signal":"CALL","ticker":"SPY","qty":1} or None if invalid.
+    """
+    # 1) Query param (?side=call|put)
+    side_q = (request.args.get("side") or "").strip().lower()
+    if side_q in ("call", "put"):
+        return {"signal": side_q.upper(), "ticker": DEFAULT_TICKER, "qty": DEFAULT_QTY}
+
+    # 2) Raw body text: CALL / PUT (text/plain)
+    raw = (request.get_data(cache=False, as_text=True) or "").strip()
+    if raw.upper() in ("CALL", "PUT"):
+        return {"signal": raw.upper(), "ticker": DEFAULT_TICKER, "qty": DEFAULT_QTY}
+
+    # 3) Proper JSON body
+    data = None
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+
+    # 3a) Raw string that contains JSON
+    if data is None and raw.startswith("{") and raw.endswith("}"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = None
+
+    # 3b) Form-encoded JSON or fields
+    if data is None and request.form:
+        for key in ("payload", "json", "message", "alert_message"):
+            v = request.form.get(key, "").strip()
+            if v:
+                try:
+                    data = json.loads(v)
+                    break
+                except json.JSONDecodeError:
+                    pass
+        if data is None and ("signal" in request.form or "side" in request.form):
+            try:
+                qty_val = int(request.form.get("qty", DEFAULT_QTY) or DEFAULT_QTY)
+            except Exception:
+                qty_val = DEFAULT_QTY
+            data = {
+                "signal": request.form.get("signal") or request.form.get("side"),
+                "ticker": request.form.get("ticker") or DEFAULT_TICKER,
+                "qty": qty_val,
+            }
+
+    if not isinstance(data, dict):
+        return None
+
+    # Normalize keys
+    signal = (str(data.get("signal") or data.get("side") or "")).strip().upper()
+    if signal not in ("CALL", "PUT"):
+        return None
+
+    ticker = (data.get("ticker") or DEFAULT_TICKER).strip().upper()
+    try:
+        qty = int(data.get("qty", DEFAULT_QTY))
+    except Exception:
+        qty = DEFAULT_QTY
+
+    return {"signal": signal, "ticker": ticker, "qty": qty}
+# --- end NEW ---
 
 @app.route("/")
 def dashboard():
@@ -76,32 +159,102 @@ def settings():
     
     return render_template('settings.html', config=config)
 
+# ---- WEBHOOK with exit logic attached ----
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Webhook endpoint for receiving trading signals"""
+    """Webhook endpoint for receiving trading signals; attaches exits after entry."""
     try:
-        # Get client info
         ip_address = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
         user_agent = request.headers.get('User-Agent', '')
-        
-        # Process the signal
+        content_type = request.headers.get('Content-Type', '')
+
+        normalized = _normalize_signal_payload(request)
+        if not normalized:
+            logger.error(
+                "Webhook parse failed. Content-Type=%s, body=%r, form=%r, args=%r",
+                content_type, (request.get_data(as_text=True) or "")[:500],
+                dict(request.form), dict(request.args)
+            )
+            return jsonify({
+                "success": False,
+                "error": "Unsupported payload. Send CALL/PUT in ?side= or body or JSON.",
+                "examples": {
+                    "query_param": "/webhook?side=call",
+                    "text_body": "CALL",
+                    "json": {"side":"PUT"},
+                }
+            }), 415
+
+        # Hand off to your existing service (unchanged contract)
         result = trading_service.process_webhook_signal(
-            request.json, 
-            ip_address, 
+            normalized,
+            ip_address,
             user_agent
         )
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logger.error(f"Webhook error: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": "Internal server error"
-        }), 500
+
+        # Attach exit logic if we can extract order info
+        exits_payload = {"exits_attached": False}
+        try:
+            side = normalized["signal"]          # "CALL" or "PUT"
+            qty = int(normalized.get("qty", 1))
+
+            # Try to pull symbol/fill/order_id from the service response
+            option_symbol = result.get("option_symbol") or result.get("symbol")
+            fill_price = result.get("fill_price") or result.get("filled_avg_price")
+            order_id = result.get("order_id") or result.get("alpaca_order_id") or result.get("entry_id")
+
+            # If we have an order_id but not symbol/fill, fetch from Alpaca
+            if order_id and (not option_symbol or not fill_price):
+                try:
+                    od = broker.get_order(order_id)
+                    option_symbol = option_symbol or od.get("symbol")
+                    if not fill_price and od.get("filled_avg_price"):
+                        fill_price = float(od["filled_avg_price"])
+                    if not qty:
+                        try:
+                            qty = int(od.get("qty") or qty)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Could not fetch order {order_id} from Alpaca: {e}")
+
+            # If we have enough to attach, start the monitor
+            if option_symbol and fill_price:
+                if side.upper() == "CALL":
+                    tp_mult, stop_mult = 1.90, 0.50   # +90%, -50%
+                else:
+                    tp_mult, stop_mult = 1.50, 0.50   # +50%, -50%
+
+                monitor_res = exits.start_monitor(
+                    option_symbol=option_symbol,
+                    qty=qty,
+                    fill_price=float(fill_price),
+                    take_profit_mult=tp_mult,
+                    stop_mult=stop_mult,
+                    use_market_for_tp=True
+                )
+                exits_payload.update({
+                    "exits_attached": True,
+                    "tp_level": monitor_res.get("tp_level"),
+                    "stop_level": monitor_res.get("stop_level"),
+                    "stop_id": monitor_res.get("stop_id")
+                })
+            else:
+                exits_payload["exit_error"] = "Missing symbol/fill; could not attach exits."
+
+        except Exception as e:
+            logger.exception("Exit attach error")
+            exits_payload["exit_error"] = f"{type(e).__name__}: {e}"
+
+        status = 200 if result.get("success") else 400
+        # Merge exit info into the original result so your UI sees it
+        merged = {**result, **exits_payload}
+        return jsonify(merged), status
+
+    except Exception:
+        logger.exception("Webhook error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+# ---- end webhook ----
 
 @app.route("/api/orders")
 def api_orders():
