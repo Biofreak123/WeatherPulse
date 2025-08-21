@@ -21,5 +21,5 @@ COPY . .
 # Expose port
 EXPOSE 8080
 
-# Run Flask (through the venv)
-CMD [".venv/bin/flask", "run", "--host=0.0.0.0", "--port=8080"]
+# Run with Gunicorn (entrypoint: app.py -> app)
+CMD [".venv/bin/gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "app:app"]
