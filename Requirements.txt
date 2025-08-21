@@ -1,4 +1,5 @@
-Flask
-requests
-pytz
-SQLAlchemy
+flask
+flask_sqlalchemy
+gunicorn
+werkzeug
+sqlalchemy
